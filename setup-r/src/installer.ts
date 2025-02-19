@@ -152,13 +152,14 @@ async function acquireFortranMacOS(version: string): Promise<string> {
   if (semver.lt(version, "4.3.0")) {
     return acquireFortranMacOSOld();
   } else {
-    return acquireFortranMacOSNew();
+    return acquireFortranMacOSNew(version);
   }
 }
 
-async function acquireFortranMacOSNew(): Promise<string> {
-  let downloadUrl =
-    "https://github.com/r-hub/mac-tools/releases/download/tools/gfortran-12.2-universal.pkg";
+async function acquireFortranMacOSNew(version: string): Promise<string> {
+  let downloadUrl = semver.lt(version, "4.5.0") ?
+	"https://github.com/r-hub/mac-tools/releases/download/tools/gfortran-12.2-universal.pkg" :
+	"https://github.com/R-macos/gcc-14-branch/releases/download/gcc-14.2-darwin-r2.1/gfortran-14.2-universal.pkg";
   let fileName = path.basename(downloadUrl);
   let downloadPath: string | null = null;
   try {
@@ -250,6 +251,17 @@ async function acquireFortranMacOSOld(): Promise<string> {
 
 async function acquireUtilsMacOS() {
   // qpdf is needed by `--as-cran`
+  // https://github.com/r-lib/actions/issues/948
+  try {
+    process.env.HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK = "true";
+    await exec.exec(
+      "brew",
+	[ "unlink", "pkg-config@0.29.2" ],
+	{ silent: false }
+    );
+  } catch (error) {
+    // ignore error, in case it is not pre-installed in the future
+  }
   try {
     process.env.HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK = "true";
     await exec.exec("brew", [
@@ -258,7 +270,7 @@ async function acquireUtilsMacOS() {
       "pkgconfig",
       "checkbashisms",
       "ghostscript",
-    ], { silent: true });
+    ], { silent: false });
   } catch (error) {
     core.debug(`${error}`);
 
@@ -629,7 +641,7 @@ async function setupRLibrary(version: IRVersion) {
     if (IS_WINDOWS) {
       rspm = `'https://packagemanager.posit.co/cran/${snapshot}'`;
     }
-    if (IS_LINUX) {
+    if (IS_LINUX && ARCH == 'x86_64') {
       let codename = "";
       try {
         await exec.exec("lsb_release", ["--short", "--codename"], {
